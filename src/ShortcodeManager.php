@@ -17,8 +17,6 @@ use BrightNucleus\Dependency\DependencyManagerInterface as DependencyManager;
 use BrightNucleus\Exception\RuntimeException;
 use BrightNucleus\Invoker\InstantiatorTrait;
 use BrightNucleus\Shortcode\Exception\FailedToInstantiateObject;
-use BrightNucleus\View\ViewBuilder;
-use BrightNucleus\Views;
 use Exception;
 
 /**
@@ -75,15 +73,6 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 	protected $dependencies;
 
 	/**
-	 * View builder instance to use for rendering views.
-	 *
-	 * @since 0.4.0
-	 *
-	 * @var ViewBuilder
-	 */
-	protected $view_builder;
-
-	/**
 	 * Collection of ShortcodeUIInterface objects.
 	 *
 	 * @since 0.1.0
@@ -93,53 +82,25 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 	protected $shortcode_uis = [];
 
 	/**
-	 * External injector to use.
-	 *
-	 * @var object
-	 */
-	protected $injector;
-
-	/**
 	 * Instantiate a ShortcodeManager object.
 	 *
 	 * @since 0.1.0
-	 * @since 0.4.0 Add optional $viewBuilder argument.
 	 *
 	 * @param ConfigInterface        $config       Configuration to set up the
 	 *                                             shortcodes.
 	 * @param DependencyManager|null $dependencies Optional. Dependencies that
-	 *                                             are needed by the
-	 *                                             shortcodes.
-	 * @param ViewBuilder|null       $view_builder Optional. View builder
-	 *                                             instance to use for
-	 *                                             rendering views.
+	 *                                             are needed by the shortcodes.
 	 *
 	 * @throws RuntimeException If the config could not be processed.
 	 */
 	public function __construct(
 		ConfigInterface $config,
-		DependencyManager $dependencies = null,
-		ViewBuilder $view_builder = null
+		DependencyManager $dependencies = null
 	) {
 		$this->processConfig( $config );
 		$this->dependencies = $dependencies;
-		$this->view_builder = $view_builder ?? Views::getViewBuilder();
-	}
 
-	/**
-	 * Use an external injector to instantiate the different classes.
-	 *
-	 * The injector will
-	 * @param object $injector Injector to use.
-	 */
-	public function with_injector( $injector ) {
-		if ( ! method_exists( $injector, 'make' ) ) {
-			throw new RuntimeException(
-				'Invalid injector provided, it does not have a make() method.'
-			);
-		}
-
-		$this->injector = $injector;
+		$this->init_shortcodes();
 	}
 
 	/**
@@ -183,7 +144,6 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 				'config'        => $this->config->getSubConfig( $tag ),
 				'atts_parser'   => $atts_parser,
 				'dependencies'  => $this->dependencies,
-				'view_builder'  => $this->view_builder,
 			]
 		);
 
@@ -279,8 +239,6 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 	 * @return void
 	 */
 	public function register( $context = null ) {
-		$this->init_shortcodes();
-
 		$context                  = $this->validate_context( $context );
 		$context['page_template'] = $this->get_page_template();
 
@@ -358,7 +316,7 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 	 * @return string|false Rendered HTML.
 	 */
 	public function do_tag( $tag, array $atts = [], $content = null ) {
-		return \BrightNucleus\Shortcode\do_tag( $tag, $atts, $content );
+		\BrightNucleus\Shortcode\do_tag( $tag, $atts, $content );
 	}
 
 	/**
@@ -380,15 +338,11 @@ class ShortcodeManager implements ShortcodeManagerInterface {
 	protected function instantiate( $interface, $class, array $args ) {
 		try {
 			if ( is_callable( $class ) ) {
-				$class = call_user_func_array( $class, $args );
+				$class = call_user_func_array( $class, array_values( $args ) );
 			}
 
 			if ( is_string( $class ) ) {
-				if ( null !== $this->injector ) {
-					$class = $this->injector->make( $class, $args );
-				} else {
-					$class = $this->instantiateClass( $class, $args );
-				}
+				$class = $this->instantiateClass( $class, $args );
 			}
 		} catch ( Exception $exception ) {
 			throw FailedToInstantiateObject::fromFactory(

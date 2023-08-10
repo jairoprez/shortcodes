@@ -25,9 +25,6 @@ This is a WordPress shortcodes component that lets you define shortcodes through
     * [Template File](#template-file)
     * [Initialization](#initialization)
 * [Using Custom Classes](#using-custom-classes)
-* [Using Relative Views](#using-relative-views)
-* [Adding Additional Context](#adding-additional-context)
-* [Using An External DI](#using-an-external-di)
 * [Contributing](#contributing)
 * [License](#license)
 
@@ -310,28 +307,6 @@ The actual implementations to be used for the following interfaces can be change
 The Config files accepts a key for overriding each of these. You can pass either a fully qualified class name or a callable that acts as a factory.
 
 When using a callable, the arguments that are passed to that callable are the same as the constructor gets for the default implementation of each of these.
-
-## Using Relative Views
-
-The underlying implementation uses the `brightnucleus/view` package to render the actual views for each shortcode. The default behavior already deals with absolute paths and can render any type of views that the Views engine being used can handle. If no specific instance of a `ViewBuilder` was injected, then the `ShortcodeManager` will rely on the one provided by the `Views` Facade.
-
-To adapt the locations that the view engine looks in for relative view URIs or to configure the available rendering engines, you can either adapt the instance centrally available through the Facade, or, preferably, inject your own custom `ViewBuilder` instance into the `ShortcodeManager` as the third constructor argument.
-
-Once you've added one or more locations in this way, you can use relative URIs in your config file. They do not even need to contain the extension, as long as that can be inferred by the engines that are known to the view builder. This makes overriding the views later on very flexible, in that you can not only override shortcode markup in your theme that was defined in your plugin, but you can also use a different engine than was originally use.
-
-Refer to the [`brightnucleus/view` documentation](https://github.com/brightnucleus/view/blob/master/README.md) on how to go about configuring a `ViewBuilder` instance.
-
-## Adding Additional Context
-
-The default implementation allows you to `add_context()` to the shortcode, which will then also be passed to the view to be rendered.
-
-This can be with a dependency injector, for example, to further prepare a shortcode with additional data after it has already been instantiated.
-
-## Using An External DI
-
-To use an external dependency injector with the default `Shortcode` implementation, you can pass an object to the `Shortcode::with_injector()` method that provides a `make( $class, $args )` method.
-
-You might need to provide an adapter to modify the `$args` argument as needed.
 
 ## Contributing
 

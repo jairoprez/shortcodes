@@ -11,14 +11,11 @@
 
 namespace BrightNucleus\Shortcode;
 
-use BrightNucleus\Config\ConfigInterface as Config;
-use BrightNucleus\Shortcode\ShortcodeAttsParserInterface as ShortcodeAttsParser;
+use BrightNucleus\Config\ConfigInterface;
 use BrightNucleus\Config\ConfigTrait;
 use BrightNucleus\Dependency\DependencyManagerInterface as DependencyManager;
 use BrightNucleus\Exception\DomainException;
 use BrightNucleus\Exception\RuntimeException;
-use BrightNucleus\View\ViewBuilder;
-use BrightNucleus\Views;
 
 /**
  * Base Implementation of the Shortcode Interface.
@@ -64,46 +61,33 @@ class Shortcode implements ShortcodeInterface {
 	protected $dependencies;
 
 	/**
-	 * View builder instance to use for creating views to render.
-	 *
-	 * @since 0.4.0
-	 *
-	 * @var ViewBuilder
-	 */
-	protected $view_builder;
-
-	/**
 	 * Cache context information so we can pass it on to the render() method.
 	 *
 	 * @var
 	 *
 	 * @since 0.2.3
 	 */
-	protected $context = [];
+	protected $context;
 
 	/**
 	 * Instantiate Basic Shortcode.
 	 *
 	 * @since 0.1.0
-	 * @since 0.4.0 Added optional $view_builder argument.
 	 *
 	 * @param string                 $shortcode_tag Tag that identifies the
 	 *                                              shortcode.
-	 * @param Config                 $config        Configuration settings.
+	 * @param ConfigInterface        $config        Configuration settings.
 	 * @param ShortcodeAttsParser    $atts_parser   Attributes parser and
 	 *                                              validator.
 	 * @param DependencyManager|null $dependencies  Optional. Dependencies of
 	 *                                              the shortcode.
-	 * @param ViewBuilder|null       $view_builder  Optional. View builder
-	 *                                              instance to use.
 	 * @throws RuntimeException If the config could not be processed.
 	 */
 	public function __construct(
 		$shortcode_tag,
-		Config $config,
+		ConfigInterface $config,
 		ShortcodeAttsParser $atts_parser,
-		DependencyManager $dependencies = null,
-		ViewBuilder $view_builder = null
+		DependencyManager $dependencies = null
 	) {
 
 		$this->processConfig( $config );
@@ -111,7 +95,6 @@ class Shortcode implements ShortcodeInterface {
 		$this->shortcode_tag = $shortcode_tag;
 		$this->atts_parser   = $atts_parser;
 		$this->dependencies  = $dependencies;
-		$this->view_builder  = $view_builder ?? Views::getViewBuilder();
 	}
 
 	/**
@@ -123,30 +106,12 @@ class Shortcode implements ShortcodeInterface {
 	 * @return void
 	 */
 	public function register( $context = null ) {
-		if ( null !== $context ) {
-			$this->add_context( $context );
-		}
-
-		if ( ! $this->is_needed( $this->context ) ) {
+		if ( ! $this->is_needed( $context ) ) {
 			return;
 		}
+		$this->context = $context;
 
 		\add_shortcode( $this->get_tag(), [ $this, 'render' ] );
-	}
-
-	/**
-	 * Add additional context to the shortcode.
-	 *
-	 * This can be used to pass more data to the view to be rendered.
-	 *
-	 * This is especially useful for additional preparation through a DI.
-	 *
-	 * @param array $context Associative array of context information to add.
-	 */
-	public function add_context( $context ) {
-		$this->context = array_filter(
-			array_merge( (array) $this->context, (array) $context )
-		);
 	}
 
 	/**
@@ -176,12 +141,13 @@ class Shortcode implements ShortcodeInterface {
 	 * @return string              The shortcode's HTML output.
 	 */
 	public function render( $atts, $content = null, $tag = null ) {
+		$context = $this->context;
 		$atts    = $this->atts_parser->parse_atts( $atts, $this->get_tag() );
 		$this->enqueue_dependencies( $this->get_dependency_handles(), $atts );
 
 		return $this->render_view(
 			$this->get_view(),
-			$this->context,
+			$context,
 			$atts,
 			$content
 		);
@@ -196,10 +162,6 @@ class Shortcode implements ShortcodeInterface {
 	 * @param mixed $context Optional. Context in which to enqueue.
 	 */
 	protected function enqueue_dependencies( $handles, $context = null ) {
-		if ( null !== $context ) {
-			$this->add_context( $context );
-		}
-
 		if ( ! $this->dependencies || count( $handles ) < 1 ) {
 			return;
 		}
@@ -207,7 +169,7 @@ class Shortcode implements ShortcodeInterface {
 		foreach ( $handles as $handle ) {
 			$found = $this->dependencies->enqueue_handle(
 				$handle,
-				$this->context,
+				$context,
 				true
 			);
 			if ( ! $found ) {
@@ -242,36 +204,21 @@ class Shortcode implements ShortcodeInterface {
 	 *
 	 * @since 0.2.6
 	 *
-	 * @param string      $uri     URI of the view to render.
+	 * @param string      $view    The view to render.
 	 * @param mixed       $context The context to pass through to the view.
 	 * @param array       $atts    The shortcode attribute values to pass
 	 *                             through to the view.
 	 * @param string|null $content Optional. The inner content of the shortcode.
 	 * @return string HTML rendering of the view.
 	 */
-	protected function render_view( $uri, $context, $atts, $content = null ) {
-		$context = $this->prepare_context( $context, $atts );
+	protected function render_view( $view, $context, $atts, $content = null ) {
+		if ( empty( $view ) ) {
+			return '';
+		}
 
-		return $this->view_builder
-			->create( $uri )
-			->render(
-				array_merge(
-					(array) $context,
-					(array) $atts,
-					(array) $content
-				)
-			);
-	}
-
-	/**
-	 * Do additional preparations on the context before rendering.
-	 *
-	 * @param array $context Context to prepare.
-	 * @param array $atts    Array of attributes passed to the shortcode.
-	 * @return array Prepared context.
-	 */
-	protected function prepare_context( array $context, array $atts ): array {
-		return $context;
+		ob_start();
+		include( $view );
+		return ob_get_clean();
 	}
 
 	/**
@@ -300,6 +247,6 @@ class Shortcode implements ShortcodeInterface {
 	 * @return string|false Rendered HTML.
 	 */
 	public function do_this( array $atts = [ ], $content = null ) {
-		return \BrightNucleus\Shortcode\do_tag( $this->get_tag(), $atts, $content );
+		\BrightNucleus\Shortcode\do_tag( $this->get_tag(), $atts, $content );
 	}
 }
